@@ -1,7 +1,6 @@
 from pydantic.dataclasses import dataclass
 from pydantic import ConfigDict
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy import RowMapping, select, func, Sequence
 from app.models.database_models import MetricItem
 from app.models.metrics_models import MetricsInputModel
@@ -9,15 +8,15 @@ from app.models.metrics_models import MetricsInputModel
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
 class MetricsDAO:
-    engine: Engine
+    async_session_maker: async_sessionmaker
 
 
-    def get_metric(self, event: MetricsInputModel, metric: str) -> Sequence[RowMapping]:
+    async def get_metric(self, event: MetricsInputModel, metric: str) -> Sequence[RowMapping]:
         func_dict = {"min": func.min,
                      "max": func.max,
                      "sum": func.sum,
                      "average": func.avg}
-        with Session(self.engine) as session:
+        async with self.async_session_maker() as session:
             stmt = select(
                 MetricItem.sensor_id.label("sensor_id"),
                 MetricItem.metric_type.label("metric"),
@@ -29,5 +28,5 @@ class MetricsDAO:
             ).group_by(MetricItem.sensor_id
             ).group_by(MetricItem.metric_type)
 
-            return session.execute(stmt).mappings().all()
+            return (await session.execute(stmt)).mappings().fetchall()
 

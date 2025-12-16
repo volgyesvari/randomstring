@@ -1,15 +1,22 @@
-from contextlib import asynccontextmanager
-
+import logging
 import uvicorn
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-from app.database.database import init_db
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from app.database.database import init_db, close_db
 from app.endpoints.metrics import metrics_router
 from app.endpoints.measurement import measurement_router
 
-init_db()
+logger = logging.getLogger("api") # Use a specific logger
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    yield
+
+    await close_db()
+
+app = FastAPI(lifespan=lifespan)
 
 app.include_router(metrics_router)
 app.include_router(measurement_router)
@@ -18,20 +25,6 @@ EXCEPTIONS_TO_IGNORE = (
     ValueError,
     KeyError,
 )
-
-@app.exception_handler(Exception)
-async def catch_all_exception_handler(request: Request, exc: Exception):
-    import logging
-
-    if isinstance(exc, EXCEPTIONS_TO_IGNORE):
-        raise exc
-
-    logging.error(f"Unhandled Server Error: {request.url} - {exc}")
-
-    return JSONResponse(
-        status_code=500,
-        content={"message": "An unexpected server error occurred.", "error_code": "INTERNAL_SERVER_ERROR"},
-    )
 
 if __name__=="__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
